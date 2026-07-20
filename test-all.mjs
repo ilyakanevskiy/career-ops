@@ -6886,7 +6886,7 @@ try {
   fail(`LaTeX-tex tailoring test crashed: ${e.message}`);
 }
 
-// ── 21. CJK CV RENDERING (lang="ja" font fallback) ──────────────
+// ── 21. CJK CV RENDERING (Japanese + Simplified Chinese) ─────────
 
 console.log('\n21. CJK CV rendering (lang="ja" font fallback)');
 
@@ -6910,6 +6910,40 @@ try {
     pass('lang="ja" rules name a concrete CJK font family');
   } else {
     fail('lang="ja" rules do not name any CJK font family — CJK fallback will not work');
+  }
+
+  for (const templateName of ['cv-template.html', 'resume-template.html']) {
+    const zhTemplate = readFileSync(join(ROOT, 'templates', templateName), 'utf-8');
+    const zhStart = zhTemplate.indexOf('html[lang="zh-CN"] body');
+    const zhBlock = zhStart >= 0 ? zhTemplate.slice(zhStart) : '';
+    const zhFonts = ['PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC'];
+
+    if (zhStart >= 0 && zhFonts.some((font) => zhBlock.includes(font))) {
+      pass(`${templateName} has concrete zh-CN font fallbacks`);
+    } else {
+      fail(`${templateName} is missing concrete zh-CN font fallbacks`);
+    }
+
+    if (/line-break:\s*strict/.test(zhBlock) && /overflow-wrap:\s*break-word/.test(zhBlock)) {
+      pass(`${templateName} applies strict Chinese line breaking without clipping long mixed tokens`);
+    } else {
+      fail(`${templateName} is missing zh-CN line-breaking safeguards`);
+    }
+
+    if (/html\[lang="zh-CN"\]\s+\.contact-row/.test(zhBlock)) {
+      pass(`${templateName} applies an explicit zh-CN fallback to contact details`);
+    } else {
+      fail(`${templateName} is missing an explicit zh-CN contact-row fallback`);
+    }
+  }
+
+  const resumeHtml = readFileSync(join(ROOT, 'templates', 'resume-template.html'), 'utf-8');
+  const resumeZhBlock = resumeHtml.slice(resumeHtml.indexOf('html[lang="zh-CN"] body'));
+  const headingGroup = resumeZhBlock.slice(resumeZhBlock.indexOf('html[lang="zh-CN"] .header h1'), resumeZhBlock.indexOf('html[lang="zh-CN"] .summary-text'));
+  if (!/\.competency-tag|\.skill-category/.test(headingGroup)) {
+    pass('resume-template.html keeps competency and skill labels out of the zh-CN heading-font group');
+  } else {
+    fail('resume-template.html assigns competency or skill labels to the zh-CN heading font');
   }
 } catch (e) {
   fail(`CJK rendering test crashed: ${e.message}`);
