@@ -1293,8 +1293,8 @@ search_queries:
 #   bulldogjob      bulldogjob.pl/companies/jobs[/s/<filters>]  (Polish tech board; filters live in the path, e.g. /s/role,devops/city,Remote)
 #   paylocity       recruiting.paylocity.com/Recruiting/Jobs/All/<board-guid>  (or api: field; a posting's
 #                   /Jobs/Details/<id> link carries no board id and is NOT claimed)
-#   talentlink      <tenant>.recruitmentplatform.com/[<site path>/]  (Lumesse TalentLink career page; a posting's
-#                   details.html?jobId=<id> link is claimed too and read as its site's board)
+#   talentlink      <tenant>.recruitmentplatform.com/[<site path>/][<page>.html]  (Lumesse TalentLink career page; a
+#                   posting's details.html?jobId=<id> link is claimed too and read as its site's board)
 #
 # When the public careers URL is a branded custom domain (e.g.
 # careers.adyen.com), set `provider: smartrecruiters` explicitly to
@@ -1372,7 +1372,7 @@ search_queries:
 #   enabled: true
 #
 # - name: Example TalentLink Branded Co
-#   careers_url: https://careers.exampleco.example/jobs/   # an employer domain serving the TalentLink career page
+#   careers_url: https://careers.exampleco.example/jobsearch.html   # the employer's page that embeds the TalentLink job list
 #   provider: talentlink   # branded domains are never auto-detected
 #   enabled: true
 #
