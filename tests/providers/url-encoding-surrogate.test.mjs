@@ -327,6 +327,17 @@ try {
     ),
     (jobs) => jobs.length === 1 && jobs[0].url === 'https://recruiting.paylocity.com/Recruiting/Jobs/Details/101',
   );
+
+  // talentlink.parseJobsResponse — for…of over the FO jobs[]; id feeds the posting URL.
+  const { parseJobsResponse: parseTalentlinkJobs, parseCriteria: parseTalentlinkCriteria } = await load('talentlink.mjs');
+  check(
+    'talentlink.parseJobsResponse',
+    () => parseTalentlinkJobs(
+      { globals: { jobsCount: 2 }, jobs: [{ id: `${LONE}bad`, jobFields: { jobTitle: 'Bad Id' } }, { id: 101, jobFields: { jobTitle: 'Good Id' } }] },
+      { boardDir: 'https://acme.recruitmentplatform.com/', company: 'Acme', locations: parseTalentlinkCriteria(null) },
+    ).jobs,
+    (jobs) => jobs.length === 1 && jobs[0].url === 'https://acme.recruitmentplatform.com/details.html?jobId=101',
+  );
 } catch (e) {
   fail(`per-provider surrogate tests crashed: ${e.message}`);
 }
@@ -354,7 +365,7 @@ try {
   const CONVERTED = [
     'alibaba.mjs', 'apple.mjs', 'arbeitsagentur.mjs', 'bamboohr.mjs', 'bulldogjob.mjs', 'darwinbox.mjs', 'deel.mjs', 'dover.mjs', 'feishu-jobs.mjs', 'garena.mjs', 'jibeapply.mjs',
     'kalibrr.mjs', 'keka.mjs', 'manfred.mjs', 'meituan.mjs', 'mokahr.mjs', 'paylocity.mjs', 'phenom.mjs', 'platsbanken.mjs',
-    'techinasia.mjs', 'thehub.mjs', 'tkms.mjs', 'vdab.mjs', 'zoho-recruit.mjs',
+    'talentlink.mjs', 'techinasia.mjs', 'thehub.mjs', 'tkms.mjs', 'vdab.mjs', 'zoho-recruit.mjs',
   ];
 
   // Bare `encodeURIComponent` on a url line that is reviewed as safe: the value
