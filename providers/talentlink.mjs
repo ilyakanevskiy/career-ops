@@ -11,15 +11,20 @@ import { cachedLookup } from './_cached-lookup.mjs';
 // entries go under `tracked_companies:`.
 //
 // Supported generation: the "FO widget" career page, served on a tenant
-// subdomain `https://{tenant}.recruitmentplatform.com/{site path}/index.html`.
-// The site path differs per tenant (empty, `internal`, `FO`,
-// `FO/{code}/components`, ...). The page is a static shell whose markup carries
-// two attributes the widget script reads:
-//   data-lumesse-fo-host="emea3.recruitmentplatform.com"   (the FO API host)
-//   data-lumesse-site-tech-id="ABCDE0123456789ABCDEFGHIJ"   (the site id)
+// subdomain `https://{tenant}.recruitmentplatform.com/{site path}/index.html`,
+// or on an employer's own domain under any page name. The site path differs per
+// tenant (empty, `internal`, `FO`, `FO/{code}/components`, ...). The page, and
+// each posting page of the site, is a static shell whose markup names the FO
+// API host and the site id, in one of two attribute sets:
+//   data-lumesse-fo-host="emea3.recruitmentplatform.com"
+//   data-lumesse-site-tech-id="ABCDE0123456789ABCDEFGHIJ"
+// or, on the accessible (WCAG) widget, with the scheme on the host:
+//   data-talentlink-fo-host="https://emea3.recruitmentplatform.com"
+//   data-talentlink-fo-site-tech-id="ABCDE0123456789ABCDEFGHIJ"
 // The widget then calls the FO REST API on that host with a fixed guest login
 // that every visitor's browser sends:
 //   headers  username: {siteId}:guest:FO, password: guest
+//   GET  https://{foHost}/fo/rest/config                  → navigationPages.jobDescriptionURL
 //   GET  https://{foHost}/fo/rest/jobs/criteria           → list names (location; skipped while probing)
 //   POST https://{foHost}/fo/rest/jobs?firstResult=N&maxResults=100
 //        &sortBy=DPOSTINGSTART&sortOrder=desc  body {"searchCriteria":{}}
@@ -49,12 +54,17 @@ import { cachedLookup } from './_cached-lookup.mjs';
 // `postedAt` is `DPOSTINGSTART`, present only when the tenant lists that column.
 // The description sections (`customFields`) come in the list response.
 //
-// The two page values are kept in `ctx.idCache` under the page URL
-// (`cachedLookup`, providers/_cached-lookup.mjs), so a scan reads the page
-// again only when the cached pair is old, and the board counts as gone when the
+// Posting URLs are `{jobDescriptionURL}?jobId={id}`. The config names that page
+// relative to the career page (`details.html`) or absolute on the career page's
+// own host (`https://careers.example.org/jobdescription.html`); a value on any
+// other host, or not https, falls back to `details.html` next to the career page.
+//
+// The FO host, the site id and the posting page are kept in `ctx.idCache` under
+// the page URL (`cachedLookup`, providers/_cached-lookup.mjs), so a scan reads
+// the page and the config again only when the cached values are old, and the board counts as gone when the
 // page answers 404 / 410. The site id belongs to one career site, not to the
 // tenant: one tenant can run several sites with different ids. When the FO API
-// refuses a cached pair (403), the pair is dropped so the next scan reads the
+// refuses the cached values (403), they are dropped so the next scan reads the
 // page again.
 //
 // Pagination: PAGE_SIZE rows per request, DEFAULT_MAX_PAGES unless the entry
@@ -80,13 +90,15 @@ const VENDOR_HOST_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.recruitmentplatfo
 const FO_HOST_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:recruitmentplatform|lumessetalentlink|sabatalentlink)\.com$/;
 const SITE_ID_RE = /^[A-Z0-9]{10,40}$/;
 const PATH_SEGMENT_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const PAGE_FILE_RE = /^[A-Za-z0-9_-]{1,64}\.html?$/;
 const LOCATION_LIST_RE = /locat|countr|city|county|region|destination|based at|office|standort|\bland\b|\bort\b|pays|ville|lieu|sede|ubicaci|pa[ií]s|ciudad|citt[aà]|miasto|lokalizac/i;
 
 /**
- * Board page and directory for an entry: `https://{host}/{segments}/index.html`.
- * The host is rebuilt from the hostname alone; the path keeps only its
- * directory segments, each checked against PATH_SEGMENT_RE, and drops a final
- * file name (`index.html`, `details.html`) and the query.
+ * Career page and directory for an entry. The host is rebuilt from the
+ * hostname alone; the directory segments are checked against PATH_SEGMENT_RE
+ * and the page file against PAGE_FILE_RE. A URL that names a page
+ * (`index.html`, `details.html`, `jobsearch.html`) keeps it; a directory URL
+ * gets `index.html`. The query is dropped.
  * @param {string} raw
  * @param {{vendorOnly?: boolean}} [opts]
  * @returns {{pageUrl: string, boardDir: string} | null}
@@ -103,10 +115,10 @@ export function resolveBoard(raw, { vendorOnly = true } = {}) {
   const host = u.hostname.toLowerCase();
   if (vendorOnly && !VENDOR_HOST_RE.test(host)) return null;
   const segments = u.pathname.split('/').filter(Boolean);
-  if (segments.length && segments[segments.length - 1].includes('.')) segments.pop();
-  if (!segments.every((s) => PATH_SEGMENT_RE.test(s))) return null;
+  const file = segments.length && !u.pathname.endsWith('/') && segments[segments.length - 1].includes('.') ? segments.pop() : 'index.html';
+  if (!PAGE_FILE_RE.test(file) || !segments.every((s) => PATH_SEGMENT_RE.test(s))) return null;
   const boardDir = `https://${host}/${segments.map((s) => `${s}/`).join('')}`;
-  return { pageUrl: `${boardDir}index.html`, boardDir };
+  return { pageUrl: `${boardDir}${file}`, boardDir };
 }
 
 /**
@@ -116,15 +128,15 @@ export function resolveBoard(raw, { vendorOnly = true } = {}) {
  */
 export function parseBoardPage(html) {
   const text = typeof html === 'string' ? html : '';
-  const host = text.match(/data-lumesse-fo-host="([^"]*)"/);
-  const site = text.match(/data-lumesse-site-tech-id="([^"]*)"/);
+  const host = text.match(/data-(?:lumesse|talentlink)-fo-host="([^"]*)"/);
+  const site = text.match(/data-(?:lumesse-site|talentlink-fo-site)-tech-id="([^"]*)"/);
   if (!host || !site) {
     if (/\/syndicated\/lay\//.test(text)) {
       throw new Error('talentlink: this page uses the syndicated job list, which this provider does not read');
     }
-    throw new Error('talentlink: no FO widget on the page (data-lumesse-fo-host / data-lumesse-site-tech-id missing)');
+    throw new Error('talentlink: no FO widget on the page (no FO host / site id attributes)');
   }
-  const foHost = host[1].trim().toLowerCase();
+  const foHost = host[1].trim().toLowerCase().replace(/^https:\/\//, '').replace(/\/$/, '');
   const siteId = site[1].trim();
   if (!FO_HOST_RE.test(foHost)) throw new Error(`talentlink: FO host "${foHost}" is not a TalentLink host`);
   if (!SITE_ID_RE.test(siteId)) throw new Error('talentlink: site id on the page has an unexpected format');
@@ -165,11 +177,33 @@ export function parseCriteria(criteria) {
   return { fields, boundTo, boundTargets };
 }
 
+/**
+ * The posting page a site's config names, resolved against the career page.
+ * @param {unknown} configured `navigationPages.jobDescriptionURL`
+ * @param {{pageUrl: string, boardDir: string}} board
+ * @returns {string}
+ */
+export function resolveDetailPage(configured, board) {
+  const fallback = `${board.boardDir}details.html`;
+  if (typeof configured !== 'string' || !configured.trim()) return fallback;
+  let u;
+  try {
+    u = new URL(configured.trim(), board.boardDir);
+  } catch {
+    return fallback;
+  }
+  if (u.protocol !== 'https:' || u.hostname !== new URL(board.pageUrl).hostname) return fallback;
+  const segments = u.pathname.split('/').filter(Boolean);
+  const file = segments.pop() || '';
+  if (!PAGE_FILE_RE.test(file) || !segments.every((s) => PATH_SEGMENT_RE.test(s))) return fallback;
+  return `https://${u.hostname}/${segments.map((s) => `${s}/`).join('')}${file}`;
+}
+
 /** @param {unknown} v */
-function isSitePair(v) {
+function isSiteValues(v) {
   if (typeof v !== 'string') return false;
-  const [host, id, extra] = v.split(' ');
-  return extra === undefined && FO_HOST_RE.test(host || '') && SITE_ID_RE.test(id || '');
+  const [host, id, detail, extra] = v.split(' ');
+  return extra === undefined && FO_HOST_RE.test(host || '') && SITE_ID_RE.test(id || '') && /^https:\/\/[^\s?#]+$/.test(detail || '');
 }
 
 /** @param {unknown} value */
@@ -241,10 +275,10 @@ function descriptionOf(customFields) {
 /**
  * Normalize one page of the FO jobs response.
  * @param {any} json
- * @param {{boardDir: string, company: string, locations: ReturnType<typeof parseCriteria>}} opts
+ * @param {{detailPage: string, company: string, locations: ReturnType<typeof parseCriteria>}} opts
  * @returns {{jobs: import('./_types.js').Job[], rawCount: number, total: number | undefined}}
  */
-export function parseJobsResponse(json, { boardDir, company, locations }) {
+export function parseJobsResponse(json, { detailPage, company, locations }) {
   // An empty board, and a page past the end, answer `{globals: {jobsCount: 0}}`
   // with no `jobs` key at all.
   const globals = json && typeof json === 'object' && json.globals && typeof json.globals === 'object' ? json.globals : null;
@@ -269,7 +303,7 @@ export function parseJobsResponse(json, { boardDir, company, locations }) {
     /** @type {import('./_types.js').Job} */
     const job = {
       title,
-      url: `${boardDir}details.html?jobId=${seg}`,
+      url: `${detailPage}?jobId=${seg}`,
       company,
       location: buildLocation(f, locations),
       externalId: String(id),
@@ -292,6 +326,16 @@ function resolveMaxPages(entry) {
   const v = entry?.max_pages;
   if (Number.isInteger(v) && v > 0) return Math.min(v, MAX_PAGES_CAP);
   return DEFAULT_MAX_PAGES;
+}
+
+/** @param {string} siteId */
+function apiHeaders(siteId) {
+  return {
+    accept: 'application/json',
+    'content-type': 'application/json',
+    username: `${siteId}:guest:FO`,
+    password: 'guest',
+  };
 }
 
 /**
@@ -332,20 +376,22 @@ export default {
         throw as404(err, `talentlink: no career page at ${board.pageUrl}`);
       }
       const { foHost, siteId } = parseBoardPage(html);
-      return `${foHost} ${siteId}`;
+      let config;
+      try {
+        config = await fetchJsonWithRetry(ctx, `https://${foHost}/fo/rest/config`, { redirect: 'error', headers: apiHeaders(siteId) });
+      } catch (err) {
+        throw as404(err, `talentlink: site id not recognised by ${foHost}`);
+      }
+      const detailPage = resolveDetailPage(/** @type {any} */ (config)?.navigationPages?.jobDescriptionURL, board);
+      return `${foHost} ${siteId} ${detailPage}`;
     };
-    const pair = await cachedLookup(ctx?.idCache, board.pageUrl, lookupPage, {
-      isValid: isSitePair,
+    const values = await cachedLookup(ctx?.idCache, board.pageUrl, lookupPage, {
+      isValid: isSiteValues,
       isGone: (err) => err?.status === 404 || err?.status === 410,
     });
-    const [foHost, siteId] = pair.split(' ');
+    const [foHost, siteId, detailPage] = values.split(' ');
     const api = `https://${foHost}/fo/rest`;
-    const headers = {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      username: `${siteId}:guest:FO`,
-      password: 'guest',
-    };
+    const headers = apiHeaders(siteId);
 
     const ctxMaxPages = Number(ctx?.maxPages);
     const probing = ctxMaxPages > 0;
@@ -389,7 +435,7 @@ export default {
         stopReason = 'fetch-error';
         break;
       }
-      const parsed = parseJobsResponse(json, { boardDir: board.boardDir, company: entry.name, locations });
+      const parsed = parseJobsResponse(json, { detailPage, company: entry.name, locations });
       // A past-the-end page reports jobsCount 0, so only a positive count bounds the walk.
       if (page === 0 && parsed.total) total = parsed.total;
       lastRaw = parsed.rawCount;

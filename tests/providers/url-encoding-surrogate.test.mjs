@@ -334,7 +334,7 @@ try {
     'talentlink.parseJobsResponse',
     () => parseTalentlinkJobs(
       { globals: { jobsCount: 2 }, jobs: [{ id: `${LONE}bad`, jobFields: { jobTitle: 'Bad Id' } }, { id: 101, jobFields: { jobTitle: 'Good Id' } }] },
-      { boardDir: 'https://acme.recruitmentplatform.com/', company: 'Acme', locations: parseTalentlinkCriteria(null) },
+      { detailPage: 'https://acme.recruitmentplatform.com/details.html', company: 'Acme', locations: parseTalentlinkCriteria(null) },
     ).jobs,
     (jobs) => jobs.length === 1 && jobs[0].url === 'https://acme.recruitmentplatform.com/details.html?jobId=101',
   );

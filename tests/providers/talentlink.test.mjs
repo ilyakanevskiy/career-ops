@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import talentlink, { resolveBoard, parseBoardPage, parseCriteria, parseJobsResponse } from '../../providers/talentlink.mjs';
+import talentlink, { resolveBoard, parseBoardPage, parseCriteria, parseJobsResponse, resolveDetailPage } from '../../providers/talentlink.mjs';
 
 const SITE_ID = 'ABCDE0123456789ABCDEFGHIJ';
 const FO_HOST = 'emea9-foc.lumessetalentlink.com';
@@ -50,13 +50,20 @@ function row(id, over = {}, customFields) {
   };
 }
 
+const wcagPage = (host = `https://${FO_HOST}`, id = SITE_ID) => `<html><body>
+<script type="text/javascript" src="${host}/apply-app/static/talentportal/release/3-LATEST/talentportal-widgets-wcag.js"
+    data-talentlink-fo-site-tech-id="${id}" data-talentlink-fo-host="${host}" data-talentlink-fo-language-autodetect></script>
+<div data-talentlink-fo-root-container></div></body></html>`;
+
+const CONFIG = { generalInfo: { language: 'EN' }, navigationPages: { jobListURL: 'index.html', jobDescriptionURL: 'details.html' } };
+
 const jobsPage = (rows, total = rows.length) => ({ globals: { jobsCount: total, typeDescriptor: {} }, jobs: rows });
 
 /**
  * Stub ctx. `pages` is an array of jobs-page answers (or Errors to throw).
  * Every call is recorded with its options.
  */
-function makeCtx({ html = page(), criteria = CRITERIA, pages = [jobsPage([row(1)])], maxPages, idCache } = {}) {
+function makeCtx({ html = page(), config = CONFIG, criteria = CRITERIA, pages = [jobsPage([row(1)])], maxPages, idCache } = {}) {
   const calls = [];
   let jobsCalls = 0;
   const answer = (v) => (v instanceof Error ? Promise.reject(v) : Promise.resolve(v));
@@ -73,6 +80,7 @@ function makeCtx({ html = page(), criteria = CRITERIA, pages = [jobsPage([row(1)
       },
       async fetchJson(url, opts) {
         calls.push({ url, opts });
+        if (url.endsWith('/fo/rest/config')) return answer(config);
         if (url.endsWith('/fo/rest/jobs/criteria')) return answer(criteria);
         const p = pages[Math.min(jobsCalls++, pages.length - 1)];
         return answer(p);
@@ -140,9 +148,15 @@ test('detect() returns null for other hosts and junk', () => {
 
 test('resolveBoard() rebuilds the origin and keeps only directory segments', () => {
   assert.deepEqual(resolveBoard('https://acme.recruitmentplatform.com:8443/internal/details.html?jobId=1#x'), {
+    pageUrl: 'https://acme.recruitmentplatform.com/internal/details.html',
+    boardDir: 'https://acme.recruitmentplatform.com/internal/',
+  });
+  assert.deepEqual(resolveBoard('https://acme.recruitmentplatform.com/internal/'), {
     pageUrl: 'https://acme.recruitmentplatform.com/internal/index.html',
     boardDir: 'https://acme.recruitmentplatform.com/internal/',
   });
+  assert.equal(resolveBoard('https://acme.recruitmentplatform.com/feed.xml'), null);
+  assert.equal(resolveBoard('https://acme.recruitmentplatform.com/a.b/index.html'), null);
   assert.equal(resolveBoard('https://careers.acme.example/jobs/'), null);
   assert.deepEqual(resolveBoard('https://careers.acme.example/jobs/', { vendorOnly: false }), {
     pageUrl: 'https://careers.acme.example/jobs/index.html',
@@ -153,6 +167,8 @@ test('resolveBoard() rebuilds the origin and keeps only directory segments', () 
 test('parseBoardPage() reads the FO host and site id, and names what is missing', () => {
   assert.deepEqual(parseBoardPage(page()), { foHost: FO_HOST, siteId: SITE_ID });
   assert.deepEqual(parseBoardPage(page('emea3.recruitmentplatform.com')).foHost, 'emea3.recruitmentplatform.com');
+  assert.deepEqual(parseBoardPage(wcagPage()), { foHost: FO_HOST, siteId: SITE_ID });
+  assert.throws(() => parseBoardPage(wcagPage('http://internal.acme.example')), /not a TalentLink host/);
   assert.throws(() => parseBoardPage('<html>nothing</html>'), /no FO widget/);
   assert.throws(
     () => parseBoardPage('<script src="https://emea3.recruitmentplatform.com/syndicated/lay/jsoutputinitrapido.cfm?ID=X"></script>'),
@@ -196,13 +212,13 @@ test('a country column in the row stays after the city', () => {
     LOV6: { lovName: 'Acme Location', items: [{ value: 2, label: 'Monterrey', bindTo: [1] }] },
   };
   const out = parseJobsResponse(jobsPage([row(1, { SLOVLIST5: 'Mexico', SLOVLIST6: 'Monterrey', SLOVLIST20: undefined })]), {
-    boardDir: BOARD, company: 'Acme', locations: parseCriteria(crit),
+    detailPage: `${BOARD}details.html`, company: 'Acme', locations: parseCriteria(crit),
   });
   assert.equal(out.jobs[0].location, 'Monterrey, Mexico');
 });
 
 test('a list the criteria do not name as a location is not read as one', () => {
-  const out = parseJobsResponse(jobsPage([row(1)]), { boardDir: BOARD, company: 'Acme', locations: parseCriteria({}) });
+  const out = parseJobsResponse(jobsPage([row(1)]), { detailPage: `${BOARD}details.html`, company: 'Acme', locations: parseCriteria({}) });
   assert.equal(out.jobs[0].location, '');
 });
 
@@ -223,11 +239,13 @@ test('rows missing an id or title, or with a non-numeric id, are dropped', async
 test('every request passes redirect: "error", and the list call carries the guest login', async () => {
   const { ctx, calls } = makeCtx();
   await talentlink.fetch({ name: 'Acme', careers_url: 'https://acme.recruitmentplatform.com/internal/details.html?jobId=9' }, ctx);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   for (const c of calls) assert.equal(c.opts.redirect, 'error', c.url);
-  assert.equal(calls[0].url, 'https://acme.recruitmentplatform.com/internal/index.html');
-  assert.equal(calls[1].url, `https://${FO_HOST}/fo/rest/jobs/criteria`);
-  const list = calls[2];
+  assert.equal(calls[0].url, 'https://acme.recruitmentplatform.com/internal/details.html');
+  assert.equal(calls[1].url, `https://${FO_HOST}/fo/rest/config`);
+  assert.equal(calls[1].opts.headers.username, `${SITE_ID}:guest:FO`);
+  assert.equal(calls[2].url, `https://${FO_HOST}/fo/rest/jobs/criteria`);
+  const list = calls[3];
   assert.equal(list.url, `https://${FO_HOST}/fo/rest/jobs?firstResult=0&maxResults=100&sortBy=DPOSTINGSTART&sortOrder=desc`);
   assert.equal(list.opts.method, 'POST');
   assert.equal(list.opts.body, '{"searchCriteria":{}}');
@@ -256,6 +274,15 @@ test('an explicit provider: talentlink reads a branded host, but the FO host mus
   const jobs = await talentlink.fetch(entry, ok.ctx);
   assert.equal(jobs[0].url, 'https://careers.acme.example/jobs/details.html?jobId=1');
   assert.equal(ok.calls[0].url, 'https://careers.acme.example/jobs/index.html');
+
+  // The accessible widget on an employer page, with its own posting page named in the config.
+  const wcag = makeCtx({
+    html: wcagPage(),
+    config: { navigationPages: { jobDescriptionURL: 'https://careers.acme.example/acme_jobdescription.html' } },
+  });
+  const wJobs = await talentlink.fetch({ name: 'Acme', provider: 'talentlink', careers_url: 'https://careers.acme.example/acme_jobsearch.html' }, wcag.ctx);
+  assert.equal(wcag.calls[0].url, 'https://careers.acme.example/acme_jobsearch.html');
+  assert.equal(wJobs[0].url, 'https://careers.acme.example/acme_jobdescription.html?jobId=1');
 
   const bad = makeCtx({ html: page('metadata.internal.example') });
   await assert.rejects(talentlink.fetch(entry, bad.ctx), /not a TalentLink host/);
@@ -286,6 +313,9 @@ test('a 403 from the career page or the FO API reads as a missing board (404)', 
   pageCtx.ctx.fetchText = async () => { throw httpError(403); };
   await assert.rejects(talentlink.fetch({ name: 'Acme', careers_url: BOARD }, pageCtx.ctx), (e) => e.status === 404 && /no career page/.test(e.message));
 
+  const cfgCtx = makeCtx({ config: httpError(403) });
+  await assert.rejects(talentlink.fetch({ name: 'Acme', careers_url: BOARD }, cfgCtx.ctx), (e) => e.status === 404 && /site id not recognised/.test(e.message));
+
   const apiCtx = makeCtx({ pages: [httpError(403)] });
   await assert.rejects(talentlink.fetch({ name: 'Acme', careers_url: BOARD }, apiCtx.ctx), (e) => e.status === 404 && /site id not recognised/.test(e.message));
 
@@ -315,6 +345,7 @@ test('DEFAULT_MAX_PAGES bounds the walk and warns to raise max_pages', quietWarn
   const { ctx, calls } = makeCtx();
   ctx.fetchJson = async (url, opts) => {
     calls.push({ url, opts });
+    if (url.endsWith('/config')) return CONFIG;
     if (url.endsWith('/criteria')) return CRITERIA;
     const rows = Array.from({ length: 100 }, () => row(++n));
     return jobsPage(rows, 100000);
@@ -376,13 +407,25 @@ test('the site pair is cached; a 403 on a cached pair drops it', async () => {
   const idCache = { get: (k) => store.get(k), set: (k, v) => store.set(k, v), delete: (k) => store.delete(k) };
   const first = makeCtx({ idCache });
   await talentlink.fetch({ name: 'Acme', careers_url: BOARD }, first.ctx);
-  assert.equal(store.get(`${BOARD}index.html`).id, `${FO_HOST} ${SITE_ID}`);
+  assert.equal(store.get(`${BOARD}index.html`).id, `${FO_HOST} ${SITE_ID} ${BOARD}details.html`);
 
   const second = makeCtx({ idCache });
   await talentlink.fetch({ name: 'Acme', careers_url: BOARD }, second.ctx);
-  assert.equal(second.calls.filter((c) => c.url.endsWith('index.html')).length, 0);
+  assert.equal(second.calls.filter((c) => c.url.endsWith('index.html') || c.url.endsWith('/config')).length, 0);
 
   const refused = makeCtx({ idCache, pages: [httpError(403)] });
   await assert.rejects(talentlink.fetch({ name: 'Acme', careers_url: BOARD }, refused.ctx), (e) => e.status === 404);
   assert.equal(store.has(`${BOARD}index.html`), false);
+});
+
+test('resolveDetailPage() keeps the configured posting page only on the career page host', () => {
+  const board = resolveBoard('https://careers.acme.example/acme_jobsearch.html', { vendorOnly: false });
+  assert.equal(resolveDetailPage('details.html', board), 'https://careers.acme.example/details.html');
+  assert.equal(resolveDetailPage('https://careers.acme.example/acme_jobdescription.html', board), 'https://careers.acme.example/acme_jobdescription.html');
+  for (const bad of ['https://evil.example/details.html', 'http://careers.acme.example/details.html', 'javascript:alert(1)', 'feed.xml', '', null, 42]) {
+    assert.equal(resolveDetailPage(bad, board), 'https://careers.acme.example/details.html', String(bad));
+  }
+  const vendor = resolveBoard('https://acme.recruitmentplatform.com/FO/ABC/components/index.html');
+  assert.equal(resolveDetailPage('details.html', vendor), 'https://acme.recruitmentplatform.com/FO/ABC/components/details.html');
+  assert.equal(resolveDetailPage('https://acme.recruitmentplatform.com/details.html', resolveBoard(BOARD)), 'https://acme.recruitmentplatform.com/details.html');
 });
