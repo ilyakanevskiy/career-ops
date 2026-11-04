@@ -42,6 +42,8 @@ try {
     ['https://jobs.dayforcehcm.com/en-US/acme/jobs/1', 'dayforce'],
     ['https://recruiting.ultipro.com/ACM1000/jobs/1', 'ultipro'],
     ['https://acme.taleo.net/careersection/jobdetail.ftl', 'taleo'],
+    ['https://acme.recruitmentplatform.com/details.html?jobId=4001', 'talentlink'],
+    ['https://acme.recruitmentplatform.com.evil.example/details.html', 'acme.recruitmentplatform.com.evil.example'],
     ['https://careers.example.com/jobs/1', 'careers.example.com'],
     ['https://evil.example/https://jobs.lever.co/acme', 'evil.example'],
   ];
@@ -76,6 +78,18 @@ try {
   assert.equal(
     atsBoardUrlOf('https://acme.successfactors.eu/Brand/job/Toronto/Role/1/', 'successfactors'),
     'https://acme.successfactors.eu/Brand',
+  );
+  assert.equal(
+    atsBoardUrlOf('https://acme.recruitmentplatform.com/internal/details.html?jobId=4001&jobTitle=Role', 'talentlink'),
+    'https://acme.recruitmentplatform.com/internal',
+  );
+  assert.equal(
+    atsBoardUrlOf('https://acme.recruitmentplatform.com/FO/ABC123/components/details.html?jobId=4001', 'talentlink'),
+    'https://acme.recruitmentplatform.com/FO/ABC123/components',
+  );
+  assert.equal(
+    atsBoardUrlOf('https://acme.recruitmentplatform.com/details.html?jobId=4001', 'talentlink'),
+    'https://acme.recruitmentplatform.com',
   );
   pass('posting URLs collapse to provider-compatible board URLs without query or fragment data');
 

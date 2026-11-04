@@ -42,6 +42,11 @@ export function atsBoardUrlOf(rawUrl, vendor = atsVendorOf(rawUrl)) {
     u.pathname = endpointAt > 0 ? `/${parts.slice(0, endpointAt).join('/')}` : '/';
   } else if (vendor === 'icims' || vendor === 'bamboohr') {
     u.pathname = '/';
+  } else if (vendor === 'talentlink') {
+    // The site path (`/internal`, `/FO/<code>/components`) is part of the
+    // board; only the page file (`details.html`, `index.html`) is dropped.
+    const dir = /\./.test(parts.at(-1) || '') ? parts.slice(0, -1) : parts;
+    u.pathname = `/${dir.join('/')}`;
   }
   u.search = '';
   u.hash = '';
