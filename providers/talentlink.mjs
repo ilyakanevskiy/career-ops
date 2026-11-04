@@ -23,7 +23,8 @@ import { cachedLookup } from './_cached-lookup.mjs';
 //   GET  https://{foHost}/fo/rest/jobs/criteria           → list names (location; skipped while probing)
 //   POST https://{foHost}/fo/rest/jobs?firstResult=N&maxResults=100
 //        &sortBy=DPOSTINGSTART&sortOrder=desc  body {"searchCriteria":{}}
-//        → {globals: {jobsCount}, jobs: [{id, jobFields, customFields}]}
+//        → {globals: {jobsCount}, jobs: [{id, jobFields, customFields}]}, or
+//          {globals: {jobsCount: 0}} without `jobs` for an empty board
 // The API answers XML unless the request asks for JSON, so every call sends
 // `accept: application/json`.
 //
@@ -244,12 +245,16 @@ function descriptionOf(customFields) {
  * @returns {{jobs: import('./_types.js').Job[], rawCount: number, total: number | undefined}}
  */
 export function parseJobsResponse(json, { boardDir, company, locations }) {
-  const rows = json && typeof json === 'object' && Array.isArray(json.jobs) ? json.jobs : null;
+  // An empty board, and a page past the end, answer `{globals: {jobsCount: 0}}`
+  // with no `jobs` key at all.
+  const globals = json && typeof json === 'object' && json.globals && typeof json.globals === 'object' ? json.globals : null;
+  const emptyBoard = globals && globals.jobsCount === 0 && json.jobs === undefined;
+  const rows = emptyBoard ? [] : json && typeof json === 'object' && Array.isArray(json.jobs) ? json.jobs : null;
   if (!rows) {
     const got = json && typeof json === 'object' ? Object.keys(json).join(', ') : typeof json;
     throw new Error(`talentlink: unexpected response — expected jobs[], got: [${got}]`);
   }
-  const totalRaw = json.globals && json.globals.jobsCount;
+  const totalRaw = globals && globals.jobsCount;
   const total = Number.isInteger(totalRaw) && totalRaw >= 0 ? totalRaw : undefined;
   const jobs = [];
   for (const row of rows) {

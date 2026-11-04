@@ -262,11 +262,14 @@ test('an explicit provider: talentlink reads a branded host, but the FO host mus
   assert.equal(bad.calls.length, 1);
 });
 
-test('an empty jobs[] is an empty board; a wrong envelope throws', async () => {
-  const empty = makeCtx({ pages: [{ globals: { jobsCount: 0 }, jobs: [] }] });
-  assert.deepEqual(await talentlink.fetch({ name: 'Acme', careers_url: BOARD }, empty.ctx), []);
+test('an empty board is empty; a wrong envelope throws', async () => {
+  // The live empty-board answer carries no jobs key at all.
+  for (const body of [{ globals: { jobsCount: 0, selectedSearchCriteria: [] } }, { globals: { jobsCount: 0 }, jobs: [] }]) {
+    const empty = makeCtx({ pages: [body] });
+    assert.deepEqual(await talentlink.fetch({ name: 'Acme', careers_url: BOARD }, empty.ctx), [], JSON.stringify(body));
+  }
 
-  for (const body of [{}, { jobs: null }, { jobs: {} }, { results: [] }, '', 7, null]) {
+  for (const body of [{}, { jobs: null }, { jobs: {} }, { results: [] }, { globals: { jobsCount: 5 } }, { globals: {} }, { globals: { jobsCount: 0 }, jobs: null }, '', 7, null]) {
     const { ctx } = makeCtx({ pages: [body] });
     await assert.rejects(talentlink.fetch({ name: 'Acme', careers_url: BOARD }, ctx), /expected jobs\[\]/, JSON.stringify(body));
   }
@@ -294,6 +297,7 @@ test('a 403 from the career page or the FO API reads as a missing board (404)', 
 test('pagination walks full pages and stops on a short one', async () => {
   const full = (start) => Array.from({ length: 100 }, (_, i) => row(start + i));
   const { ctx, calls } = makeCtx({ pages: [jobsPage(full(1), 0), jobsPage(full(101), 0), jobsPage([row(201)], 0)] });
+  // jobsCount 0 next to full pages is ignored; the short page ends the walk.
   const jobs = await talentlink.fetch({ name: 'Acme', careers_url: BOARD }, ctx);
   assert.equal(jobs.length, 201);
   assert.deepEqual(listCalls(calls).map((c) => new URL(c.url).searchParams.get('firstResult')), ['0', '100', '200']);
