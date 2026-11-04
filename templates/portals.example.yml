@@ -1293,6 +1293,8 @@ search_queries:
 #   bulldogjob      bulldogjob.pl/companies/jobs[/s/<filters>]  (Polish tech board; filters live in the path, e.g. /s/role,devops/city,Remote)
 #   paylocity       recruiting.paylocity.com/Recruiting/Jobs/All/<board-guid>  (or api: field; a posting's
 #                   /Jobs/Details/<id> link carries no board id and is NOT claimed)
+#   talentlink      <tenant>.recruitmentplatform.com/[<site path>/]  (Lumesse TalentLink career page; a posting's
+#                   details.html?jobId=<id> link is claimed too and read as its site's board)
 #
 # When the public careers URL is a branded custom domain (e.g.
 # careers.adyen.com), set `provider: smartrecruiters` explicitly to
@@ -1362,6 +1364,16 @@ search_queries:
 # - name: Example Paylocity Co
 #   careers_url: https://recruiting.paylocity.com/Recruiting/Jobs/All/00000000-0000-4000-8000-000000000000
 #                          # the board link off the careers page; the GUID is the board id
+#   enabled: true
+#
+# - name: Example TalentLink Co
+#   careers_url: https://exampleco.recruitmentplatform.com/   # keep the site path your link has, e.g. /internal/ or /FO/<code>/components/
+#   max_pages: 20          # optional page cap (100 jobs/page, default 20, max 200)
+#   enabled: true
+#
+# - name: Example TalentLink Branded Co
+#   careers_url: https://careers.exampleco.example/jobs/   # an employer domain serving the TalentLink career page
+#   provider: talentlink   # branded domains are never auto-detected
 #   enabled: true
 #
 # - name: Example Collage HR Co
@@ -2723,6 +2735,11 @@ tracked_companies:
     careers_url: https://jobs.ashbyhq.com/forto
     notes: "Berlin DE. Digital freight forwarder, product & data roles, German + English."
     enabled: true
+
+  - name: Mubea
+    careers_url: https://mubeacareers.recruitmentplatform.com/
+    notes: "Attendorn DE. Automotive and aerospace components, engineering and plant roles across DE, CZ, PL, MX, US."
+    enabled: false
 
   # -- DACH IT services / digital transformation consulting --
 
