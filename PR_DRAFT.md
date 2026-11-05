@@ -15,7 +15,7 @@ Before merging, please read the robots.txt question in the related issue: the FO
 
 ## Related issue
 
-Refs #<issue number> (robots.txt on the TalentLink FO API hosts; this PR waits for a decision there).
+Refs #6508 (robots.txt on the TalentLink FO API hosts; this PR waits for a decision there).
 
 ## Type of change
 
