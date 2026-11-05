@@ -359,6 +359,20 @@ try {
     ).jobs,
     (jobs) => jobs.length === 1 && jobs[0].url === 'https://acme.hire.trakstar.com/jobs/good1/',
   );
+
+  // aldi-nord.parseQueryResponse — for…of over results[]; slugTitle and postingId feed the posting URL.
+  const { parseQueryResponse } = await load('aldi-nord.mjs');
+  check(
+    'aldi-nord.parseQueryResponse',
+    () => parseQueryResponse(
+      { total: 2, hasNextPage: false, results: [
+        { postingId: `${LONE}1`, slugTitle: 'bad-id', title: 'Bad Id' },
+        { postingId: '101', slugTitle: 'good-id', title: 'Good Id' },
+      ] },
+      { host: 'www.aldi-nord.de', detailPath: '/karriere/detail/', locale: 'de-DE', company: 'Acme' },
+    ).jobs,
+    (jobs) => jobs.length === 1 && jobs[0].url === 'https://www.aldi-nord.de/karriere/detail/good-id-101.html',
+  );
 } catch (e) {
   fail(`per-provider surrogate tests crashed: ${e.message}`);
 }
@@ -384,7 +398,7 @@ try {
   // import _safe-url.mjs and call safeEncodeURIComponent; dropping either is the
   // regression this list catches.
   const CONVERTED = [
-    'alibaba.mjs', 'apple.mjs', 'arbeitsagentur.mjs', 'bamboohr.mjs', 'bulldogjob.mjs', 'darwinbox.mjs', 'deel.mjs', 'dover.mjs', 'feishu-jobs.mjs', 'garena.mjs', 'jibeapply.mjs',
+    'aldi-nord.mjs', 'alibaba.mjs', 'apple.mjs', 'arbeitsagentur.mjs', 'bamboohr.mjs', 'bulldogjob.mjs', 'darwinbox.mjs', 'deel.mjs', 'dover.mjs', 'feishu-jobs.mjs', 'garena.mjs', 'jibeapply.mjs',
     'kalibrr.mjs', 'keka.mjs', 'manfred.mjs', 'meituan.mjs', 'mokahr.mjs', 'paylocity.mjs', 'phenom.mjs', 'platsbanken.mjs',
     'polymer.mjs', 'techinasia.mjs', 'thehub.mjs', 'tkms.mjs', 'trakstar.mjs', 'vdab.mjs', 'zoho-recruit.mjs',
   ];
