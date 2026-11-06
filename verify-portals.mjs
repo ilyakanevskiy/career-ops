@@ -292,7 +292,7 @@ const AGGREGATOR_HOSTS = [
   'greenhouse.io', 'ashbyhq.com', 'lever.co', 'myworkdayjobs.com', 'workday.com',
   'smartrecruiters.com', 'jobvite.com', 'icims.com', 'bamboohr.com', 'gem.com',
   'recruitee.com', 'teamtailor.com', 'personio.com', 'workable.com', 'breezy.hr',
-  'paylocity.com', 'join.com', 'hirehive.com', 'linkedin.com', 'indeed.com',
+  'paylocity.com', 'careers.hibob.com', 'join.com', 'hirehive.com', 'linkedin.com', 'indeed.com',
   'glassdoor.com', 'ycombinator.com', 'wellfound.com',
 ];
 
